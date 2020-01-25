@@ -7,13 +7,11 @@ SCRIPT
 Vagrant.configure("2") do |config|
   config.vm.define "ubuntu", primary: true do |ubuntu|
     ubuntu.vm.box = "ubuntu/bionic64"
-    ubuntu.ssh.insert_key = false
     ubuntu.vm.provision "shell", inline: $apache_inst_script
     ubuntu.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
   end
 
   config.vm.define "centos" do |centos|
     centos.vm.box = "centos/7"
-    centos.ssh.insert_key = false
   end
 end
