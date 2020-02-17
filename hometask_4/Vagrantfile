@@ -1,0 +1,37 @@
+##################################################################################
+################################### Important! ###################################
+##################################################################################
+#
+# WordPress is available at https://localhost:8081/ and http://localhost:8080/
+#
+# WordPress Database Name is 'wordpress', Username is 'username', Password is
+# 'password' (to match default placeholders for faster testing). But the
+# Database Host is '172.18.0.2'.
+#
+##################################################################################
+#
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/bionic64"
+  config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
+  config.vm.network "forwarded_port", guest: 443, host: 8081, host_ip: "127.0.0.1"
+  config.vm.provision "docker" do |docker|
+    docker.pull_images "romanbondar/wordpress"
+    docker.pull_images "romanbondar/mysql"
+    docker.run "wordpress", image: "romanbondar/wordpress",
+           args: "-p 80:80/tcp -p 443:443/tcp"
+    docker.run "mysql", image: "romanbondar/mysql"
+  end
+  config.vm.provision "shell", inline: <<-SHELL
+    docker network create db-net
+    docker network connect db-net mysql
+    docker network connect db-net wordpress
+    docker exec mysql mysql -u root -p --skip-password -e "CREATE DATABASE wordpress; CREATE USER 'username'@'172.18.0.3' IDENTIFIED BY 'password'; GRANT ALL ON wordpress.* TO 'username'@'172.18.0.3';"
+    docker exec wordpress chown -R www-data:www-data /var/www/html # So Apache is able to manage the WordPress files
+    # Generating a self-signed localhost cert
+    docker exec wordpress bash -c 'openssl req -x509 -out /etc/apache2/localhost.crt -keyout /etc/apache2/localhost.key -newkey rsa:2048 -nodes -sha256 -subj "/CN=localhost" -extensions EXT -config <( printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")'
+    # Enabling localhost cert in Apache main conf file
+    docker exec wordpress bash -c 'echo -e "\n<VirtualHost *:443>\n    ServerName localhost\n    SSLEngine on\n    SSLCertificateFile /etc/apache2/localhost.crt\n    SSLCertificateKeyFile /etc/apache2/localhost.key\n</VirtualHost>" >> /etc/apache2/apache2.conf'
+    docker exec wordpress a2enmod ssl
+    docker exec wordpress apachectl restart
+  SHELL
+end
